@@ -3,7 +3,7 @@
 #
 # Nekmo Software 2011 ( contacto [at] nekmo.com ) - Licencia: GPLv3 
 # 
-# Envíe sus sugerencias y reportes a: https://bitbucket.org/Nekmo/namerepair
+# Envíe sus sugerencias y reportes a: https://bitbucket.org/Nekmo/fixname
 #
 ##
 
@@ -28,10 +28,10 @@ CLASSIFIERS = [
 
 packages = []
 
-scripts = ['namerepair']
+scripts = ['fixname']
 
 setup(
-    name = "namerepair",
+    name = "fixname",
     version = VERSION,
     description = DESCRIPTION,
     long_description = LONG_DESCRIPTION,
