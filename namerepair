@@ -4,16 +4,24 @@
 """Pasar nombres de archivos de codificaciones desconocidas al
    estandar UTF-8"""
 
+# Codecs por defecto a comprobar como posibles inválidos
 CODECS = ['cp437', 'latin1', 'iso-8859-15']
+
+# Soporte de idiomas para estadísticas. Los valores numéricos es la nota
+# de probabilidad que tiene el caracter.
 LANGS = {
-    'es': ['Á', 'É','Í', 'Ó', 'Ú', 'á', 'é',
-           'í', 'ó', 'ú', 'ñ', 'Ñ', 'ü', 'Ü', '€',],
+    'es': {'Á': 3, 'É': 3, 'Í': 3, 'Ó': 3, 'Ú': 3, 'á': 3, 'é': 3,
+           'í': 3, 'ó': 3, 'ú': 3, 'ñ': 3, 'Ñ': 3, 'ü': 2, 'Ü': 2, '€': 1,},
 }
+
 import sys
 import os
 import re
 import argparse
 import logging
+
+# Codificación del sistema. En sistemas unix, UTF-8
+SYSTEM_ENCODING = sys.getfilesystemencoding()
 
 if sys.version_info < (3,0):
     reload(sys)
@@ -21,6 +29,10 @@ if sys.version_info < (3,0):
     input = raw_input
 
 class File(object):
+    """Un objeto de nombre de archivo. Notifica si la codificación es
+    incorrecta, propone códecs para el idioma facilitado de ser incorrecto,
+    renombrarlo, etc.
+    """
     valid_codecs = []
     def __init__(self, filename, lang='es'):
         self.lang = lang
@@ -38,6 +50,9 @@ class File(object):
         if self.is_bad_encoding:
             self.valid_codecs = self.get_valid_codecs()
     def get_valid_codecs(self):
+        """Obtener una lista de códecs válidos para el archivo, ordenados
+        mediante estadística para el idioma de más o menos probable.
+        """
         valid_codecs_names = {} # "codec": "nombre con el códec"
         codecs_stats = [] # estadísticas para el codec
         valid_codecs = [] # códecs de mejor a peor estadísticas
@@ -48,30 +63,35 @@ class File(object):
             except:
                 pass
         # Ordenar los codecs según el número de buenos resultados para el idioma
+        # cada caracter tiene una puntuación diferente para las estadísticas.
         for codec, filename in valid_codecs_names.items():
             stats = 0
             for char in filename:
-                if char in LANGS[self.lang]: stats += 1
+                if char in LANGS[self.lang].keys():
+                    stats += LANGS[self.lang][str(char)]
             codecs_stats.append((stats, codec))
-        
         for codec_stats in sorted(codecs_stats, reverse=True):
             valid_codecs.append(codec_stats[1])
         return valid_codecs
         
     def make_pattern(self, filename):
-        """Construir el patrón regex para la sección"""
+        """Construir el patrón regex para el nombre de archivo incorrecto
+        """
         filename = (re.escape(filename))
         filename = filename.replace('\\�', '.')
         return filename
     def get_status_encoding(self):
-        """Comprobar si la codificación es incorrecta"""
+        """Comprobar si la codificación es incorrecta, y establecer el
+        nombre de "archivo bueno" (con la codificación mal, pero sin el �) en
+        self.filename
+        """
         # Comprobar, con el patrón Regex, cuál es el "nombre correcto" al
         # nombre incorrecto con el �
         files = os.listdir(self.directory)
         for file in files:
             try:
                 if re.match(self.pattern_filename, file):
-                    file.decode('utf-8')
+                    file.decode(SYSTEM_ENCODING)
             except UnicodeDecodeError:
                 self.filename = file
                 return True
@@ -79,12 +99,18 @@ class File(object):
         # o no tiene problemas de codificación.
         return False
     def decode(self, codec=False):
+        """Devuelve el nombre bajo la codificación facilitada. Si no se
+        facilita una codificación, se usará la más probable estadísticamente.
+        """
         if not codec: codec = self.valid_codecs[0]
         try:
             return self.filename.decode(codec)
         except:
             return False
     def rename(self, codec=False):
+        """Renombrar el nombre de archivo bajo la codificación facilitada. Si
+        no se establece una codificación, se usará la más probable.
+        """
         if not codec: codec = self.valid_codecs[0]
         decode_name = self.decode(codec)
         if not decode_name: return False
@@ -94,9 +120,14 @@ class File(object):
         )
         return True
     def __nonzero__(self):
+        """True en caso de que el nombre de archivo tenga una mala codificación.
+        False en el caso contrario.
+        """
         return self.is_bad_encoding
 
 def recursive(files):
+    """Obtener archivos recursivamente para los facilitados.
+    """
     recursive_files = []
     for file in files:
         for root, dirs, infiles in os.walk(file):
@@ -106,24 +137,35 @@ def recursive(files):
     return recursive_files
 
 def decode_files(files, codec=False):
+    """Preguntar si la codificación para los archivos es la deseada antes de
+    renombrarlos.
+    """
     codecs = []
     for file in files:
         if not codec:
             file_codec = file.valid_codecs[0]
         else:
             file_codec = codec
-        print("%13s   %s" % (file_codec.upper(), str(file.decode(codec))))
+        decode_filename = file.decode(codec)
+        if not decode_filename:
+            decode_filename = ' -- ERROR: El códec no pudo decodear. -- '
+        print("%13s   %s" % (file_codec.upper(), decode_filename))
         codecs = list(set(codecs + file.valid_codecs))
     print(
         "¿Renombrar los archivos con los nombres anteriores? Pulse enter"\
         " para confirmar. Si desea usar un códec específico, escríbalo y "\
         "pulse enter. Le recomendamos los siguientes: %s" % ', '.join(codecs))
-    resp = input('[Enter para aceptar] >> ')
+    try:
+        resp = input('[Enter para aceptar] >> ')
+    except KeyboardInterrupt:
+        print('')
+        logging.info("Operación cancelada.")
+        sys.exit(0)
     if not resp:
         renames = 0
         for file in files:
             if file.rename(codec): renames += 1
-        print("Renombrados correctamente %i archivos." % renames)
+        logging.info("Renombrados correctamente %i archivos." % renames)
     else:
         decode_files(files, resp)
     
@@ -139,22 +181,52 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--interactive', dest='interactive',
                     action='store_true',
                     help='Confirmación individual por cada archivo.')
+    parser.add_argument('--from-encoding', dest='from_encoding',
+                    default='',
+                    help='Codificación desde la que se convertirá.')
+    parser.add_argument('--to-encoding', dest='to_encoding',
+                    default=SYSTEM_ENCODING,
+                    help='Codificación a la que se convertirá. Por defecto'\
+                         ' se usará %s' % SYSTEM_ENCODING)
+    # Argumentos de logging
+    parser.add_argument('--debug', dest='loglevel', action='store_const',
+                    const=logging.DEBUG, default=logging.INFO,
+                    help='Establecer el nivel de los logs a debug.')
+    parser.add_argument('--warning', dest='loglevel', action='store_const',
+                    const=logging.WARNING, default=logging.INFO,
+                    help='Establecer el nivel de los logs a solo advertencias.')
+    parser.add_argument('--error', dest='loglevel', action='store_const',
+                    const=logging.ERROR, default=logging.INFO,
+                    help='Establecer el nivel a solo errores del programa.')
     parser.add_argument('files', nargs='+', help='Archivos a reparar')
     args = parser.parse_args()
+    # Establecer el nivel de logging
+    logging.basicConfig(level=args.loglevel,
+                        format='%(levelname)-8s %(message)s')
+    # Codificación a la que se convertirá
+    SYSTEM_ENCODING = args.to_encoding
     if args.recursive:
+        # Añadir los archivos recursivamente
         args.files = recursive(args.files)
     args.files = set(args.files) # Eliminar repeticiones
+    # Construir listado de archivos con nombres incorrectos
     files = []
     for file in args.files:
-        file = File(file)
+        file = File(file, args.lang)
         if file: files.append(file)
+    if not files:
+        logging.info("No hubo archivos a renombrar.")
+        sys.exit(0)
     if args.force:
+        # Forzar el renombrado sin preguntar
         for file in files:
             print("%13s   %s" % (file_codec.upper(), str(file.decode(codec))))
-            file.rename()
+            file.rename(args.from_encoding)
     elif args.interactive:
+        # Usar decode por cada archivo
         for file in files:
-            decode_files([file])
+            decode_files([file], args.from_encoding)
     else:
-        decode_files(files)
+        # Usar decode con todos los archivos
+        decode_files(files, args.from_encoding)
     sys.exit(0)
