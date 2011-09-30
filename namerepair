@@ -220,7 +220,8 @@ if __name__ == '__main__':
     if args.force:
         # Forzar el renombrado sin preguntar
         for file in files:
-            print("%13s   %s" % (file_codec.upper(), str(file.decode(codec))))
+            print("%13s   %s" % (file.valid_codecs[0].upper(),
+                                        str(file.decode(args.from_encoding))))
             file.rename(args.from_encoding)
     elif args.interactive:
         # Usar decode por cada archivo
