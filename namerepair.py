@@ -36,7 +36,7 @@ class File(object):
         self.directory = directory
         self.is_bad_encoding = self.get_status_encoding()
         if self.is_bad_encoding:
-            self.valid_codecs = get_valid_codecs()
+            self.valid_codecs = self.get_valid_codecs()
     def get_valid_codecs(self):
         valid_codecs_names = {} # "codec": "nombre con el códec"
         codecs_stats = [] # estadísticas para el codec
@@ -112,9 +112,8 @@ def decode_files(files, codec=False):
             file_codec = file.valid_codecs[0]
         else:
             file_codec = codec
-        print("%.10s %s" % (file_codec.upper(), str(file.decode(codec))))
-        codecs.append(file_codec)
-        codecs = set(codecs)
+        print("%13s   %s" % (file_codec.upper(), str(file.decode(codec))))
+        codecs = list(set(codecs + file.valid_codecs))
     print(
         "¿Renombrar los archivos con los nombres anteriores? Pulse enter"\
         " para confirmar. Si desea usar un códec específico, escríbalo y "\
@@ -124,24 +123,26 @@ def decode_files(files, codec=False):
         renames = 0
         for file in files:
             if file.rename(codec): renames += 1
-            print("Renombrados correctamente %i archivos." % renames)
+        print("Renombrados correctamente %i archivos." % renames)
     else:
         decode_files(files, resp)
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('-r', '--recursive', dest='recursive', default=False,
+    parser.add_argument('-r', '--recursive', dest='recursive',
+                    action='store_true',
                     help='Buscar también dentro de carpetas recursivamente.')
-    parser.add_argument('-f', '--force', dest='force', default=False,
+    parser.add_argument('-f', '--force', dest='force', action='store_true',
                     help='Forzar el renombrado sin preguntar.')
     parser.add_argument('-l', '--lang', dest='lang', default='es',
                     help='Idioma por defecto para estadísticas.')
-    parser.add_argument('-i', '--interactive', dest='interactive', default=False,
+    parser.add_argument('-i', '--interactive', dest='interactive',
+                    action='store_true',
                     help='Confirmación individual por cada archivo.')
     parser.add_argument('files', nargs='+', help='Archivos a reparar')
     args = parser.parse_args()
     if args.recursive:
-        args.files = recursive(files)
+        args.files = recursive(args.files)
     args.files = set(args.files) # Eliminar repeticiones
     files = []
     for file in args.files:
@@ -149,7 +150,7 @@ if __name__ == '__main__':
         if file: files.append(file)
     if args.force:
         for file in files:
-            print("%.10s %s" % (file_codec.upper(), str(file.decode(codec))))
+            print("%13s   %s" % (file_codec.upper(), str(file.decode(codec))))
             file.rename()
     elif args.interactive:
         for file in files:
